@@ -1,0 +1,149 @@
+<style>
+  .vectary-container {
+    width: 100%;
+    height: 100vh;
+  }
+</style>
+
+<div class="vectary-container">
+  <iframe
+    src="https://www.vectary.com/p/08o9DXBrriueuzaLPSfBXK"
+    id="vectary-embed"
+    frameborder="0"
+    width="100%"
+    height="100%"
+    allow="xr-spatial-tracking"
+  ></iframe>
+</div>
+
+<script type="module">
+  import { VctrModelApi } from "https://www.vectary.com/studio-lite/scripts/api.js";
+
+document.addEventListener('DOMContentLoaded', async function() {
+  try {
+    const modelApi = new VctrModelApi("vectary-embed");
+    await modelApi.init();
+    
+    let previousTriggerVisibility = null;
+    let previousMagVisibility = null;
+    let previousMaterial = null;
+    
+    const frameVariantToObjectMap = {
+      "Eclipse": "Eclipse Frame",
+      "Classic": "Classic Frame",
+      "Panto": "Panto Frame"
+    };
+
+    const earTipsMap = {
+      "Eclipse": "ECLIPSE EAR TIPS",
+      "Classic": "CLASSIC EAR TIPS",
+      "Panto": "PANTO EAR TIPS"
+    };
+
+    async function updateEarTipsColor(frameColor) {
+      // Determine ear tips color based on frame color
+      let earTipsColorName;
+      if (frameColor === "Lilac Pearl") {
+        earTipsColorName = "PURPLE";
+      } else if (frameColor === "Pearl Pink") {
+        earTipsColorName = "PINK";
+      } else {
+        earTipsColorName = "BLACK";
+      }
+
+      // Update each frame's ear tips
+      for (const earTips of Object.values(earTipsMap)) {
+        try {
+          await modelApi.setActiveMaterial(earTips, earTipsColorName);
+          console.log(`Set ${earTips} to ${earTipsColorName}`);
+        } catch (error) {}
+      }
+    }
+
+    async function checkSpheresAndMaterials() {
+      try {
+        const objects = await modelApi.getObjects();
+        
+        // Check current frame style and material
+        const config = await modelApi.getConfigurationState();
+        let currentFrameStyle;
+        
+        config.forEach(item => {
+          if (item.variant === "Frame Style") {
+            currentFrameStyle = item.active_object;
+          }
+        });
+
+        if (currentFrameStyle) {
+          const frameObjectName = frameVariantToObjectMap[currentFrameStyle];
+          const currentMaterial = await modelApi.getActiveMaterial(frameObjectName);
+          
+          // If material changed, update all frames and ear tips
+          if (currentMaterial && (!previousMaterial || currentMaterial.name !== previousMaterial.name)) {
+            console.log("Color changed to:", currentMaterial.name);
+            
+            // Apply this material to all frames
+            for (const frameObject of Object.values(frameVariantToObjectMap)) {
+              try {
+                await modelApi.setActiveMaterial(frameObject, currentMaterial.id);
+                console.log(`Applied ${currentMaterial.name} to ${frameObject}`);
+              } catch (error) {}
+            }
+
+            // Update ear tips colors based on the new frame color
+            await updateEarTipsColor(currentMaterial.name);
+            
+            previousMaterial = currentMaterial;
+          }
+        }
+        
+        // Check TriggerSphere
+        const sphere = objects.find(obj => obj.name === "TriggerSphere");
+        if (sphere) {
+          const visibility = sphere.visible;
+          if (previousTriggerVisibility !== null && previousTriggerVisibility !== visibility) {
+            const config = await modelApi.getConfigurationState();
+            let frameStyle, loupeStyle, frameColor, frameObjectName;
+            
+            config.forEach(item => {
+              if (item.variant === "Frame Style") {
+                frameStyle = item.active_object;
+              } else if (item.variant === "Loupe Style") {
+                loupeStyle = item.active_object;
+              }
+            });
+            
+            frameObjectName = frameVariantToObjectMap[frameStyle];
+            
+            try {
+              const material = await modelApi.getActiveMaterial(frameObjectName);
+              if (material) {
+                frameColor = material.name;
+              }
+            } catch (materialError) {}
+            
+            alert(`Order Process Starts Here\nFrame Style: ${frameStyle}\nLoupe Style: ${loupeStyle}\nFrame Color: ${frameColor || "Not found"}`);
+          }
+          previousTriggerVisibility = visibility;
+        }
+
+        // Check MagSphere
+        const magSphere = objects.find(obj => obj.name === "MagSphere");
+        if (magSphere) {
+          const magVisibility = magSphere.visible;
+          if (previousMagVisibility !== null && previousMagVisibility !== magVisibility) {
+            showMagPopup();
+          }
+          previousMagVisibility = magVisibility;
+        }
+
+      } catch (error) {}
+    }
+
+    setInterval(checkSpheresAndMaterials, 100);
+    modelApi.addEventListener('visibilityChanged', checkSpheresAndMaterials);
+    modelApi.addEventListener('loaded', checkSpheresAndMaterials);
+
+  } catch (error) {}
+});
+</script>
